@@ -1,0 +1,13 @@
+node_modules
+.next
+dist
+coverage
+.env
+.env.local
+.DS_Store
+*.log
+*.tsbuildinfo
+uploads
+neo4j-data
+infra/neo4j/data
+infra/sql/data
