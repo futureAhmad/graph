@@ -6,6 +6,7 @@ import { Network, Play } from "lucide-react";
 import { GraphCanvas } from "@/components/graph/graph-canvas";
 import { Button } from "@/components/ui/button";
 import { CommandSelect } from "@/components/ui/command";
+import { JsonObjectView } from "@/components/ui/json-object-view";
 import { Panel } from "@/components/ui/panel";
 import {
   getServiceDependencies,
@@ -189,12 +190,8 @@ function ServiceThirdParties({ graph }: { graph: GraphResponse | null }) {
   return (
     <div className="mt-4 text-sm">
       <div className="text-xs uppercase tracking-wide text-muted-foreground">Third Parties</div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {thirdParties.map((party) => (
-          <span key={party} className="rounded-md border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-foreground">
-            {party}
-          </span>
-        ))}
+      <div className="mt-2">
+        <JsonObjectView value={{ thirdParties, count: thirdParties.length }} />
       </div>
     </div>
   );
@@ -355,6 +352,5 @@ function nodeTypeLabel(type: string) {
 }
 
 function capitalizeFirst(value: string) {
-  const trimmed = value.trim().toLowerCase();
-  return trimmed ? `${trimmed[0].toUpperCase()}${trimmed.slice(1)}` : value;
+  return value.trim().toUpperCase();
 }

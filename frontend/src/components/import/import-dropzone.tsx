@@ -74,8 +74,17 @@ export function ImportDropzone() {
       </div>
       {error ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm">{error}</p> : null}
       {summary ? (
-        <div className="grid gap-3 text-sm md:grid-cols-1">
+        <div className="grid gap-3 text-sm md:grid-cols-3">
           <Metric label="Dependency Rows" value={summary.rowsImported} />
+          <Metric label="Hardware Specs" value={summary.hardwareSpecsImported} />
+          <Metric label="Third Parties" value={summary.thirdPartiesImported} />
+        </div>
+      ) : null}
+      {summary?.warnings.length ? (
+        <div className="rounded-md border border-amber-300/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-200">
+          {summary.warnings.map((warning) => (
+            <div key={warning}>{warning}</div>
+          ))}
         </div>
       ) : null}
     </Panel>

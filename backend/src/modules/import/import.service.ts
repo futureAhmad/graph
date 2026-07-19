@@ -54,6 +54,8 @@ export class ImportService {
       sheetName: plan.sheetName,
       rowsRead: plan.rowsRead,
       rowsImported: plan.rowsImported,
+      hardwareSpecsImported: plan.hardwareSpecs.length,
+      thirdPartiesImported: plan.thirdParties.length,
       nodesPlanned: plan.nodes.length,
       relationshipsPlanned: plan.relationships.length,
       warnings: plan.warnings
@@ -171,9 +173,23 @@ export class ImportService {
   }
 
   createWorkbookImportPlan(workbook: XLSX.WorkBook, options: { datasetId: string; sourceName: string }): ImportPlan {
-    const dependencySheetName = workbook.SheetNames[0];
-    const hardwareSheetName = workbook.SheetNames[1];
-    const thirdPartySheetName = workbook.SheetNames[2];
+    const dependencySheetName =
+      this.findWorkbookSheetName(workbook, [
+        ["service name", "service"],
+        ["dc", "direct channel", "delivery channel"],
+        ["app", "application"],
+        ["integ", "integration", "integeration", "integration tool"]
+      ]) ?? workbook.SheetNames[0];
+    const hardwareSheetName = this.findWorkbookSheetName(workbook, [
+      ["source"],
+      ["server", "os", "virtualization", "virtualisation", "load_balancer", "load balancer", "firewall", "backup", "storage", "db", "database", "dns_required", "dns required"]
+    ], dependencySheetName ? new Set([dependencySheetName]) : undefined);
+    const thirdPartySheetName = this.findWorkbookSheetName(workbook, [
+      ["service name", "service"],
+      ["dc", "direct channel", "delivery channel"],
+      ["app", "application"],
+      ["company name", "thrid", "third", "third party", "thrid party", "vendor", "provider"]
+    ], new Set([dependencySheetName, hardwareSheetName].filter((sheetName): sheetName is string => Boolean(sheetName))));
     if (!dependencySheetName) {
       throw new BadRequestException("Workbook must contain Sheet1 dependency data.");
     }
@@ -196,11 +212,19 @@ export class ImportService {
     }
 
     if (thirdPartySheetName) {
-      plan.thirdParties = this.createThirdPartyFacts(this.sheetRows(workbook, thirdPartySheetName), {
+      const thirdPartyRows = this.sheetRows(workbook, thirdPartySheetName);
+      plan.thirdParties = this.createThirdPartyFacts(thirdPartyRows, {
         datasetId: options.datasetId,
         nodes,
-        relationships
+        relationships,
+        warnings: plan.warnings,
+        sheetName: thirdPartySheetName
       });
+      if (thirdPartyRows.length > 0 && plan.thirdParties.length === 0) {
+        plan.warnings.push(`Third-party sheet "${thirdPartySheetName}" was found, but no third-party rows were imported.`);
+      }
+    } else if (workbook.SheetNames.length >= 3) {
+      plan.warnings.push("Workbook has at least three sheets, but no sheet matched the required third-party headers.");
     }
 
     plan.nodes = Array.from(nodes.values());
@@ -208,6 +232,20 @@ export class ImportService {
     plan.rowsRead = dependencyRows.length + plan.hardwareSpecs.length + plan.thirdParties.length;
     plan.rowsImported = plan.facts.length;
     return plan;
+  }
+
+  private findWorkbookSheetName(
+    workbook: XLSX.WorkBook,
+    requiredHeaderGroups: string[][],
+    excludedSheetNames = new Set<string>()
+  ): string | undefined {
+    return workbook.SheetNames.find((sheetName) => {
+      if (excludedSheetNames.has(sheetName)) {
+        return false;
+      }
+      const rows = this.sheetRows(workbook, sheetName);
+      return requiredHeaderGroups.every((headers) => Boolean(this.findHeader(rows, headers)));
+    });
   }
 
   private sheetRows(workbook: XLSX.WorkBook, sheetName: string): WorkbookRow[] {
@@ -314,11 +352,13 @@ export class ImportService {
       datasetId: string;
       nodes: Map<string, ImportNodeInput>;
       relationships: Map<string, ImportRelationshipInput>;
+      warnings?: string[];
+      sheetName?: string;
     }
   ): ImportThirdPartyInput[] {
     const functionHeader = this.findHeader(rows, ["function name", "function"]);
     const serviceHeader = this.findHeader(rows, ["service name", "service"]);
-    const directChannelHeader = this.findHeader(rows, ["dc", "direct channel"]);
+    const directChannelHeader = this.findHeader(rows, ["dc", "direct channel", "delivery channel"]);
     const applicationHeader = this.findHeader(rows, ["app", "application"]);
     const thirdPartyHeader =
       this.findHeader(rows, ["company name"]) ??
@@ -326,17 +366,41 @@ export class ImportService {
     const thirdPartyCompositeHeader = this.findHeader(rows, ["thrid", "third", "third party", "thrid party"]);
 
     if (!serviceHeader || !directChannelHeader || !applicationHeader || !thirdPartyHeader) {
+      options.warnings?.push(
+        `Third-party sheet "${options.sheetName ?? "unknown"}" is missing required headers: ${[
+          !serviceHeader ? "service name" : null,
+          !directChannelHeader ? "dc/direct channel/delivery channel" : null,
+          !applicationHeader ? "app/application" : null,
+          !thirdPartyHeader ? "Company name/thrid" : null
+        ]
+          .filter(Boolean)
+          .join(", ")}.`
+      );
       return [];
     }
 
     const facts = new Map<string, ImportThirdPartyInput>();
+    let skippedRows = 0;
 
-    rows.forEach((row) => {
+    rows.forEach((row, index) => {
       const serviceValue = this.valueForHeader(row, serviceHeader);
       const directChannelValue = this.valueForHeader(row, directChannelHeader);
       const applicationValue = this.valueForHeader(row, applicationHeader);
       const thirdPartyValue = this.resolveThirdPartyCompanyName(row, thirdPartyHeader, thirdPartyCompositeHeader);
       if (!hasValue(serviceValue) || !hasValue(directChannelValue) || !hasValue(applicationValue) || !hasValue(thirdPartyValue)) {
+        skippedRows += 1;
+        if (skippedRows <= 3) {
+          options.warnings?.push(
+            `Third-party row ${index + 2} skipped because ${[
+              !hasValue(serviceValue) ? serviceHeader : null,
+              !hasValue(directChannelValue) ? directChannelHeader : null,
+              !hasValue(applicationValue) ? applicationHeader : null,
+              !hasValue(thirdPartyValue) ? thirdPartyHeader : null
+            ]
+              .filter(Boolean)
+              .join(", ")} is blank.`
+          );
+        }
         return;
       }
 

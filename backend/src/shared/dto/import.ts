@@ -5,6 +5,8 @@ export interface ImportSummary {
   sheetName: string;
   rowsRead: number;
   rowsImported: number;
+  hardwareSpecsImported: number;
+  thirdPartiesImported: number;
   nodesPlanned: number;
   relationshipsPlanned: number;
   warnings: string[];

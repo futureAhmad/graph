@@ -187,4 +187,51 @@ describe("ImportService", () => {
       })
     ]);
   });
+
+  it("imports third-party rows with delivery channel and ignores no values", () => {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet([
+        {
+          no: "10",
+          "function name": "Payments",
+          "service name": "Transfer",
+          "delivery channel": "Mobile",
+          app: "CRM",
+          integration: "ESB"
+        }
+      ]),
+      "dependency"
+    );
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ source: "ESB", server: "AppServer01" }]), "hardware");
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet([
+        {
+          no: "99",
+          "function name": "Payments",
+          "service name": "Transfer",
+          "delivery channel": "Mobile",
+          app: "CRM",
+          thrid: "Payment gateway (Acme Pay)",
+          type: "Payment gateway",
+          "Company name": "Acme Pay"
+        }
+      ]),
+      "third_party"
+    );
+
+    const plan = service.createWorkbookImportPlan(workbook, { datasetId: "default", sourceName: "test.xlsx" });
+
+    expect(plan.thirdParties).toEqual([
+      expect.objectContaining({
+        serviceName: "Transfer",
+        directChannelName: "Mobile",
+        applicationName: "CRM",
+        thirdPartyName: "Acme Pay"
+      })
+    ]);
+    expect(plan.nodes).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "No" })]));
+  });
 });

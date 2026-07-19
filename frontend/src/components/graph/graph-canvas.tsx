@@ -32,6 +32,7 @@ type DependencyNodeData = {
   childCount: number;
   collapsed: boolean;
   selected: boolean;
+  dimmed: boolean;
   sourceHandleCount: number;
   targetHandleCount: number;
 };
@@ -142,7 +143,8 @@ function DependencyNode({ data }: NodeProps<Node<DependencyNodeData>>) {
   return (
     <div
       className={cn(
-        "w-56 rounded-md border bg-card px-3 py-3 text-card-foreground shadow-[0_18px_44px_rgba(0,0,0,0.16)] transition-transform dark:bg-[#07111f]/95 dark:shadow-[0_18px_44px_rgba(0,0,0,0.34)]",
+        "w-56 rounded-md border bg-card px-3 py-3 text-card-foreground shadow-[0_18px_44px_rgba(0,0,0,0.16)] transition-[opacity,transform] dark:bg-[#07111f]/95 dark:shadow-[0_18px_44px_rgba(0,0,0,0.34)]",
+        data.dimmed && "opacity-55",
         data.selected && "scale-[1.03] shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_24px_52px_rgba(0,0,0,0.42)]"
       )}
       style={{ borderColor: String(data.color) }}
@@ -203,11 +205,15 @@ function toFlowGraph(
   const visibleNodes = graph.nodes.filter((node) => !hiddenIds.has(node.id));
   const visibleEdges = graph.edges.filter((edge) => !hiddenIds.has(edge.source) && !hiddenIds.has(edge.target));
   const handleMap = createEdgeHandleMap(visibleEdges, positions);
+  const rootId = graph.rootNodeId ?? graph.nodes.find((node) => node.type === "Service")?.id ?? graph.nodes[0]?.id;
+  const shouldFocusNode = Boolean(selectedId && selectedId !== rootId && visibleNodes.some((node) => node.id === selectedId));
+  const relatedNodeIds = createRelatedNodeSet(visibleEdges, selectedId, selectedEdgeId);
 
   const nodes: Node<DependencyNodeData>[] = visibleNodes.map((node) => ({
     id: node.id,
     type: "dependency",
     position: positions.get(node.id) ?? { x: 0, y: 0 },
+    zIndex: selectedId === node.id ? 2 : relatedNodeIds.has(node.id) ? 1 : 0,
     data: {
       label: node.name,
       type: node.type,
@@ -215,6 +221,7 @@ function toFlowGraph(
       childCount: childrenById.get(node.id)?.length ?? 0,
       collapsed: collapsed.has(node.id),
       selected: selectedId === node.id,
+      dimmed: (shouldFocusNode || Boolean(selectedEdgeId)) && !relatedNodeIds.has(node.id),
       sourceHandleCount: handleMap.sourceCounts.get(node.id) ?? 0,
       targetHandleCount: handleMap.targetCounts.get(node.id) ?? 0
     }
@@ -225,6 +232,9 @@ function toFlowGraph(
       const sourceNode = graph.nodes.find((node) => node.id === edge.source);
       const edgeColor = sourceNode ? colorForType(sourceNode.type) : "#38bdf8";
       const selected = selectedEdgeId === edge.id;
+      const connectedToSelection = selectedId ? edge.source === selectedId || edge.target === selectedId : false;
+      const dimmed = (shouldFocusNode && !connectedToSelection) || (Boolean(selectedEdgeId) && !selected);
+      const focused = selected || connectedToSelection;
       const isDependency = edge.type === "DEPENDS_ON";
       const handleIds = handleMap.edgeHandles.get(edge.id);
 
@@ -234,14 +244,15 @@ function toFlowGraph(
         target: edge.target,
         sourceHandle: handleIds?.sourceHandle,
         targetHandle: handleIds?.targetHandle,
-        type: "bezier",
-        animated: isDependency || selected,
+        type: focused ? "smoothstep" : "bezier",
+        animated: selected || (shouldFocusNode && connectedToSelection && isDependency),
         markerEnd: { type: MarkerType.ArrowClosed, color: edgeColor },
         interactionWidth: 24,
+        zIndex: focused ? 2 : 0,
         style: {
-          strokeWidth: selected ? 4.5 : isDependency ? 2.4 : 2.8,
+          strokeWidth: selected ? 4.5 : connectedToSelection ? 3.5 : isDependency ? 2.1 : 2.5,
           stroke: edgeColor,
-          opacity: selectedEdgeId && !selected ? 0.28 : 0.94,
+          opacity: dimmed ? 0.32 : 0.96,
           strokeDasharray: isDependency ? "10 7" : undefined,
           filter: selected ? "drop-shadow(0 0 8px rgba(255,255,255,0.35))" : undefined
         }
@@ -249,6 +260,26 @@ function toFlowGraph(
     });
 
   return { nodes, edges };
+}
+
+function createRelatedNodeSet(edges: GraphEdge[], selectedId: string | null, selectedEdgeId: string | null): Set<string> {
+  const relatedNodeIds = new Set<string>();
+  if (selectedId) {
+    relatedNodeIds.add(selectedId);
+  }
+
+  for (const edge of edges) {
+    if (selectedId && (edge.source === selectedId || edge.target === selectedId)) {
+      relatedNodeIds.add(edge.source);
+      relatedNodeIds.add(edge.target);
+    }
+    if (selectedEdgeId && edge.id === selectedEdgeId) {
+      relatedNodeIds.add(edge.source);
+      relatedNodeIds.add(edge.target);
+    }
+  }
+
+  return relatedNodeIds;
 }
 
 function handleOffset(index: number, count: number): string {
@@ -355,8 +386,8 @@ function createTreePositions(
   const positions = new Map<string, { x: number; y: number }>();
   const rootId = graph.rootNodeId ?? graph.nodes.find((node) => node.type === "Service")?.id ?? graph.nodes[0]?.id;
   const roots = rootId ? [rootId] : [];
-  const xGap = 290;
-  const yGap = 175;
+  const xGap = 245;
+  const yGap = 230;
   let leafIndex = 0;
 
   function place(nodeId: string, depth: number): number {
@@ -399,9 +430,9 @@ function createDependencyPositions(
   }
 
   const positions = new Map<string, { x: number; y: number }>();
-  const xGap = 340;
-  const clusterGap = 420;
-  const yGap = 220;
+  const xGap = 285;
+  const clusterGap = 335;
+  const yGap = 500;
   let cursorX = 0;
   const dcCenters: number[] = [];
 

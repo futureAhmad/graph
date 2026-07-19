@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { ImpactResponse, SearchResultItem } from "@/shared";
-import { AlertTriangle, Check, Copy, GitBranch } from "lucide-react";
+import { AlertTriangle, GitBranch } from "lucide-react";
 import { GraphCanvas } from "@/components/graph/graph-canvas";
 import { Button } from "@/components/ui/button";
 import { CommandSelect } from "@/components/ui/command";
+import { JsonObjectView } from "@/components/ui/json-object-view";
 import { Panel } from "@/components/ui/panel";
 import { getImpact, getImpactOptions, type ImpactMode } from "@/features/impact/impact.api";
 
@@ -211,63 +212,4 @@ function impactLevelTone(level: string) {
     icon: "bg-red-500/15 text-red-300",
     badge: "border-red-400/30 bg-red-400/10 text-red-200"
   };
-}
-
-function JsonObjectView({ value }: { value: { serviceNames: string[]; count: number } }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(JSON.stringify(value, null, 2));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
-  return (
-    <div className="relative w-full overflow-auto rounded-md border border-white/10 bg-[#050b16] p-3 font-mono text-xs leading-6 shadow-inner">
-      <button
-        onClick={handleCopy}
-        className="absolute right-3 top-3 rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
-        title="Copy JSON"
-      >
-        {copied ? (
-          <Check className="h-4 w-4 text-emerald-400" />
-        ) : (
-          <Copy className="h-4 w-4" />
-        )}
-      </button>
-
-      <div>
-        <span className="text-slate-500">{"{"}</span>
-      </div>
-      <div className="pl-4">
-        <span className="text-sky-300">"serviceNames"</span>
-        <span className="text-slate-400">: </span>
-        <span className="text-slate-500">[</span>
-      </div>
-
-      {value.serviceNames.map((serviceName, index) => (
-        <div key={serviceName} className="pl-8">
-          <span className="text-emerald-300">"{serviceName}"</span>
-          {index < value.serviceNames.length - 1 && (
-            <span className="text-slate-400">,</span>
-          )}
-        </div>
-      ))}
-
-      <div className="pl-4">
-        <span className="text-slate-500">]</span>
-        <span className="text-slate-400">,</span>
-      </div>
-
-      <div className="pl-4">
-        <span className="text-sky-300">"count"</span>
-        <span className="text-slate-400">: </span>
-        <span className="text-orange-300">{value.count}</span>
-      </div>
-
-      <div>
-        <span className="text-slate-500">{"}"}</span>
-      </div>
-    </div>
-  );
 }
