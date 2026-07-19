@@ -1,4 +1,4 @@
-import { RELATIONSHIP_TYPES } from "@service-dependency/shared";
+import { RELATIONSHIP_TYPES } from "../../shared";
 import { ColumnRegistryService } from "./column-registry.service";
 
 describe("ColumnRegistryService", () => {
@@ -13,7 +13,15 @@ describe("ColumnRegistryService", () => {
       nodeType: "DirectChannel",
       relationshipType: RELATIONSHIP_TYPES.AVAILABLE_ON
     });
+    expect(registry.resolve("delivery channel")).toMatchObject({
+      nodeType: "DirectChannel",
+      relationshipType: RELATIONSHIP_TYPES.AVAILABLE_ON
+    });
     expect(registry.resolve("integ")).toMatchObject({
+      nodeType: "Integration",
+      relationshipType: RELATIONSHIP_TYPES.DEPENDS_ON
+    });
+    expect(registry.resolve("integeration")).toMatchObject({
       nodeType: "Integration",
       relationshipType: RELATIONSHIP_TYPES.DEPENDS_ON
     });

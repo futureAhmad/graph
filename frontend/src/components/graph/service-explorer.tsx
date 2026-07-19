@@ -1,29 +1,40 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { GraphEdge, GraphNode, GraphResponse, SearchResultItem } from "@service-dependency/shared";
+import type { GraphNode, GraphResponse, SearchResultItem } from "@/shared";
 import { Network, Play } from "lucide-react";
 import { GraphCanvas } from "@/components/graph/graph-canvas";
 import { Button } from "@/components/ui/button";
 import { CommandSelect } from "@/components/ui/command";
 import { Panel } from "@/components/ui/panel";
-import { apiClient } from "@/lib/api";
+import {
+  getServiceDependencies,
+  listFunctions,
+  listServicesByFunction
+} from "@/features/graph/graph.api";
 import { colorForType } from "./node-colors";
 
 export function ServiceExplorer() {
+  const [functions, setFunctions] = useState<SearchResultItem[]>([]);
   const [services, setServices] = useState<SearchResultItem[]>([]);
+  const [functionId, setFunctionId] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [graph, setGraph] = useState<GraphResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const canAnalyze = Boolean(serviceName.trim());
 
   const loadGraph = useCallback(async () => {
+    if (!serviceName.trim()) {
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    setSelectedNode(null);
     try {
-      const result = await apiClient<GraphResponse>(`/service/${encodeURIComponent(serviceName)}/dependencies`);
+      const result = await getServiceDependencies(serviceName);
       setGraph(result);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load graph.");
@@ -33,36 +44,59 @@ export function ServiceExplorer() {
   }, [serviceName]);
 
   useEffect(() => {
-    async function loadServices() {
+    async function loadOptions() {
       setError(null);
       try {
-        const result = await apiClient<SearchResultItem[]>("/service");
-        setServices(result);
-        setServiceName((current) => current || result[0]?.name || "");
+        const functionResult = await listFunctions();
+        setFunctions(functionResult);
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Unable to load services.");
+        setError(caught instanceof Error ? caught.message : "Unable to load explorer options.");
       }
     }
 
-    void loadServices();
+    void loadOptions();
   }, []);
 
   useEffect(() => {
-    if (serviceName) {
-      void loadGraph();
+    async function loadFunctionServices() {
+      if (!functionId) {
+        setServices([]);
+        setServiceName("");
+        return;
+      }
+
+      setError(null);
+      try {
+        const result = await listServicesByFunction(functionId);
+        setServices(result);
+        setServiceName("");
+        setGraph(null);
+        setSelectedNode(null);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Unable to load services for selected function.");
+      }
     }
-  }, [loadGraph, serviceName]);
+
+    void loadFunctionServices();
+  }, [functionId]);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
         <div>
           <h1 className="text-2xl font-semibold md:text-3xl">Service Dependency Map</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Select one service and generate its dependency tree.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">Select a function first, then choose one related service.</p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-[minmax(0,280px)_auto]">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,360px)_minmax(0,420px)_auto]">
+          <CommandSelect
+            options={functions.map((item) => ({ label: item.name, value: item.entityKey.replace("Function:", "") }))}
+            value={functionId}
+            onValueChange={setFunctionId}
+            placeholder="Select function"
+            searchPlaceholder="Search functions..."
+            emptyText="No functions found."
+            showFullText
+          />
           <CommandSelect
             options={services.map((service) => ({ label: service.name, value: service.name }))}
             value={serviceName}
@@ -70,8 +104,9 @@ export function ServiceExplorer() {
             placeholder="Select service"
             searchPlaceholder="Search services..."
             emptyText="No services found."
+            showFullText
           />
-          <Button onClick={loadGraph} disabled={loading || !serviceName.trim()}>
+          <Button onClick={loadGraph} disabled={loading || !canAnalyze}>
             <Play className="h-4 w-4" />
             {loading ? "Loading" : "Analyze"}
           </Button>
@@ -84,7 +119,6 @@ export function ServiceExplorer() {
           height={620}
           title="Dependency Flow"
           onSelectedNodeChange={setSelectedNode}
-          onSelectedEdgeChange={setSelectedEdge}
         />
         <div className="max-h-[620px] space-y-5 overflow-y-auto pr-1 xl:sticky xl:top-20">
           <Panel>
@@ -93,29 +127,16 @@ export function ServiceExplorer() {
                 <Network className="h-5 w-5" />
               </span>
               <div>
-                <h2 className="font-semibold">Service Details</h2>
-                <p className="text-sm text-muted-foreground">{serviceName}</p>
+                <h2 className="font-semibold">Selection Details</h2>
+                <p className="text-sm text-muted-foreground">{serviceName || "No service selected"}</p>
               </div>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <Metric label="Nodes" value={graph?.nodes.length ?? 0} />
-              <Metric label="Edges" value={graph?.edges.length ?? 0} />
-            </div>
+            <ServiceCriticalBadge graph={graph} />
+            <ServiceThirdParties graph={graph} />
           </Panel>
           <Panel className="space-y-4">
-            <h2 className="font-semibold">{selectedEdge ? "Selected Relationship" : "Selected Node"}</h2>
-            {selectedEdge ? (
-              <>
-                <div className="rounded-md border border-cyan-400/20 bg-cyan-400/10 p-3">
-                  <div className="text-xs uppercase tracking-wide text-cyan-100">Relationship Type</div>
-                  <div className="mt-2 text-lg font-semibold text-cyan-50">{selectedEdge.type}</div>
-                  <div className="mt-1 text-xs text-cyan-100">{relationshipDescription(selectedEdge.type)}</div>
-                </div>
-                <Detail label="From" value={nodeName(graph, selectedEdge.source)} />
-                <Detail label="To" value={nodeName(graph, selectedEdge.target)} />
-                <Detail label="Edge ID" value={selectedEdge.id} />
-              </>
-            ) : selectedNode ? (
+            <h2 className="font-semibold">Selected Node</h2>
+            {selectedNode ? (
               <>
                 <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
                   <div className="flex items-center gap-2">
@@ -125,17 +146,55 @@ export function ServiceExplorer() {
                     />
                     <span className="text-xs uppercase tracking-wide text-muted-foreground">{nodeTypeLabel(selectedNode.type)}</span>
                   </div>
-                  <div className="mt-3 break-words text-lg font-semibold">{selectedNode.name}</div>
+                  <div className="mt-3 break-words text-lg font-semibold">{capitalizeFirst(selectedNode.name)}</div>
                 </div>
-                <Detail label="Dataset" value={selectedNode.datasetId} />
-                <Detail label="Entity Key" value={selectedNode.entityKey} />
                 <NodeProperties properties={selectedNode.properties} />
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">Click a graph node or relationship edge to inspect it.</p>
+              <p className="text-sm text-muted-foreground">Click a graph node to inspect it.</p>
             )}
           </Panel>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ServiceCriticalBadge({ graph }: { graph: GraphResponse | null }) {
+  const serviceNode = graph?.nodes.find((node) => node.id === graph.rootNodeId || node.type === "Service");
+  const isCritical = serviceNode?.properties?.isCritical === true;
+  
+
+  return (
+    <div
+      className={
+        isCritical
+          ? "mt-5 inline-flex rounded-md border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-sm font-semibold text-red-100"
+          : "mt-5 inline-flex rounded-md border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-sm font-semibold text-emerald-100"
+      }
+    >
+      {isCritical ? "Critical service" : "Non-critical service"}
+    </div>
+  );
+}
+
+function ServiceThirdParties({ graph }: { graph: GraphResponse | null }) {
+  const serviceNode = graph?.nodes.find((node) => node.id === graph.rootNodeId || node.type === "Service");
+  const thirdParties = toStringArray(serviceNode?.properties?.thirdParties);
+
+  if (thirdParties.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 text-sm">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">Third Parties</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {thirdParties.map((party) => (
+          <span key={party} className="rounded-md border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-foreground">
+            {party}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -158,7 +217,7 @@ function NodeProperties({ properties }: { properties?: Record<string, unknown> }
   return (
     <div className="space-y-3">
       {Object.entries(properties)
-        .filter(([key]) => key !== "criticalHardwareSpecs")
+        .filter(([key]) => key !== "criticalHardwareSpecs" && key !== "thirdParties")
         .map(([key, value]) => (
           <PropertyBlock
             key={key}
@@ -295,25 +354,7 @@ function nodeTypeLabel(type: string) {
   return type;
 }
 
-function nodeName(graph: GraphResponse | null, nodeId: string) {
-  return graph?.nodes.find((node) => node.id === nodeId)?.name ?? nodeId;
-}
-
-function relationshipDescription(type: string) {
-  if (type === "AVAILABLE_ON") {
-    return "Service is available on this direct channel.";
-  }
-  if (type === "DEPENDS_ON") {
-    return "Parent dependency requires the child dependency in this service path.";
-  }
-  return "Relationship between dependency nodes.";
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
-      <div className="text-xs uppercase text-muted-foreground">{label}</div>
-      <div className="mt-1 text-xl font-semibold">{value}</div>
-    </div>
-  );
+function capitalizeFirst(value: string) {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed ? `${trimmed[0].toUpperCase()}${trimmed.slice(1)}` : value;
 }

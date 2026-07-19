@@ -13,6 +13,11 @@ export class GraphController {
     return this.graphService.getStatistics(query);
   }
 
+  @Get("executive-dashboard")
+  getExecutiveDashboard(@Query() query: DatasetQueryDto) {
+    return this.graphService.getExecutiveDashboard(query);
+  }
+
   @Get("node/:entityKey/neighbors")
   getNeighbors(@Param("entityKey") entityKey: string) {
     return this.graphService.getNeighbors(entityKey);

@@ -69,7 +69,7 @@ export function SidebarHeader({ className, children }: React.HTMLAttributes<HTML
 }
 
 export function SidebarContent({ className, children }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden", className)}>{children}</div>;
+  return <div className={cn("sidebar-content flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overflow-x-hidden", className)}>{children}</div>;
 }
 
 export function SidebarFooter({ className, children }: React.HTMLAttributes<HTMLDivElement>) {
@@ -92,12 +92,13 @@ export function SidebarMenuButton({
   className,
   active,
   asChild,
+  tooltip,
   children,
   ...props
-}: React.AnchorHTMLAttributes<HTMLAnchorElement> & { active?: boolean; asChild?: boolean }) {
+}: React.AnchorHTMLAttributes<HTMLAnchorElement> & { active?: boolean; asChild?: boolean; tooltip?: string }) {
+  const { collapsed } = useSidebar();
   const Comp = asChild ? Slot : "a";
-
-  return (
+  const button = (
     <Comp
       className={cn(
         "sidebar-menu-button flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
@@ -108,6 +109,22 @@ export function SidebarMenuButton({
     >
       {children}
     </Comp>
+  );
+
+  if (!collapsed || !tooltip) {
+    return button;
+  }
+
+  return (
+    <div className="group/sidebar-tooltip relative">
+      {button}
+      <span
+        className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-1/2 z-50 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-black bg-black px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover/sidebar-tooltip:opacity-100 group-focus-within/sidebar-tooltip:opacity-100 lg:block"
+        role="tooltip"
+      >
+        {tooltip}
+      </span>
+    </div>
   );
 }
 

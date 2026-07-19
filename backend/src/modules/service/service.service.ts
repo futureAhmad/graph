@@ -1,4 +1,4 @@
-import { CANONICAL_NODE_TYPES } from "@service-dependency/shared";
+import { CANONICAL_NODE_TYPES } from "../../shared";
 import { Injectable } from "@nestjs/common";
 import { GraphRepository } from "../graph/graph.repository";
 
@@ -12,5 +12,21 @@ export class ServiceDependencyService {
 
   listServices(datasetId: string) {
     return this.graphRepository.listByType(CANONICAL_NODE_TYPES.SERVICE, datasetId);
+  }
+
+  listFunctions(datasetId: string) {
+    return this.graphRepository.listByType(CANONICAL_NODE_TYPES.FUNCTION, datasetId);
+  }
+
+  listServicesByFunction(functionId: number, datasetId: string) {
+    return this.graphRepository.listServicesByFunction(functionId, datasetId);
+  }
+
+  listApplications(datasetId: string) {
+    return this.graphRepository.listByType(CANONICAL_NODE_TYPES.APPLICATION, datasetId);
+  }
+
+  listIntegrations(datasetId: string) {
+    return this.graphRepository.listByType(CANONICAL_NODE_TYPES.INTEGRATION, datasetId);
   }
 }

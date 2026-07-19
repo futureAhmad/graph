@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { GraphStatistics } from "@service-dependency/shared";
-import { Boxes, Cable, DatabaseZap, Network } from "lucide-react";
-import { apiClient } from "@/lib/api";
+import type { GraphStatistics } from "@/shared";
+import { Boxes, DatabaseZap, Network } from "lucide-react";
+import { getGraphStatistics } from "@/features/graph/graph.api";
 
 export function StatCards() {
   const [stats, setStats] = useState<GraphStatistics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiClient<GraphStatistics>("/graph/statistics")
+    getGraphStatistics()
       .then(setStats)
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load statistics."));
   }, []);
@@ -22,14 +22,12 @@ export function StatCards() {
   const services = stats?.nodesByType.Service ?? 0;
   const applications = stats?.nodesByType.Application ?? 0;
   const integrations = stats?.nodesByType.Integration ?? 0;
-  const relationships = stats?.totalRelationships ?? 0;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-3">
       <Metric icon={Network} label="Services" value={services} tone="text-sky-300" />
       <Metric icon={Boxes} label="Applications" value={applications} tone="text-orange-300" />
       <Metric icon={DatabaseZap} label="Integrations" value={integrations} tone="text-blue-300" />
-      <Metric icon={Cable} label="Relationships" value={relationships} tone="text-emerald-300" />
     </div>
   );
 }

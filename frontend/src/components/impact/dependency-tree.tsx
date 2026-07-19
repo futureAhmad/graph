@@ -1,4 +1,4 @@
-import type { DependencyTreeNode } from "@service-dependency/shared";
+import type { DependencyTreeNode } from "@/shared";
 import { Badge } from "@/components/ui/badge";
 
 export function DependencyTree({ nodes }: { nodes: DependencyTreeNode[] }) {

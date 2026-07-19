@@ -2,7 +2,7 @@ import {
   CANONICAL_NODE_TYPES,
   KNOWN_COLUMN_TYPE_MAP,
   RELATIONSHIP_TYPES
-} from "@service-dependency/shared";
+} from "../../shared";
 import { Injectable } from "@nestjs/common";
 import { normalizeHeader, toPascalIdentifier } from "../../common/utils/text-normalizer";
 

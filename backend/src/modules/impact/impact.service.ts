@@ -5,7 +5,7 @@ import {
   GraphResponse,
   ImpactLevel,
   ImpactResponse
-} from "@service-dependency/shared";
+} from "../../shared";
 import { Injectable } from "@nestjs/common";
 import { GraphRepository } from "../graph/graph.repository";
 

@@ -1,21 +1,17 @@
-import { Injectable, OnApplicationBootstrap, Logger } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { DatasetQueryDto } from "../../common/dto/dataset-query.dto";
 import { GraphRepository } from "./graph.repository";
 
 @Injectable()
-export class GraphService implements OnApplicationBootstrap {
-  private readonly logger = new Logger(GraphService.name);
-
+export class GraphService {
   constructor(private readonly graphRepository: GraphRepository) {}
-
-  onApplicationBootstrap(): void {
-    void this.graphRepository
-      .ensureSchema()
-      .catch((error) => this.logger.warn(`SQL schema initialization skipped: ${(error as Error).message}`));
-  }
 
   getStatistics(query: DatasetQueryDto) {
     return this.graphRepository.getStatistics(query.datasetId);
+  }
+
+  getExecutiveDashboard(query: DatasetQueryDto) {
+    return this.graphRepository.getExecutiveDashboard(query.datasetId);
   }
 
   getNeighbors(entityKey: string) {

@@ -18,28 +18,23 @@ export interface ImportRelationshipInput {
 }
 
 export interface ImportFactInput {
-  datasetId: string;
-  sourceRowNumber: number;
   functionName?: string;
   serviceName: string;
+  serviceIsCritical: boolean;
   directChannelName: string;
   applicationName: string;
   integrationName: string;
 }
 
 export interface ImportHardwareSpecInput {
-  datasetId: string;
-  sourceRowNumber: number;
-  integrationName: string;
+  sourceName: string;
+  sourceType: "Application" | "Integration";
   specName: string;
   specCategory: string;
   isCritical: boolean;
-  criticalityLabel?: string;
 }
 
 export interface ImportThirdPartyInput {
-  datasetId: string;
-  sourceRowNumber: number;
   functionName?: string;
   serviceName: string;
   directChannelName: string;

@@ -90,6 +90,69 @@ body {
   background: rgba(3, 11, 28, 0.9);
 }
 
+.light [class*="border-white/10"] {
+  border-color: hsl(var(--border)) !important;
+}
+
+.light [class*="bg-white/["] {
+  background-color: hsl(var(--card) / 0.82) !important;
+}
+
+.light [class*="hover:bg-white/"]:hover {
+  background-color: hsl(var(--muted)) !important;
+}
+
+.light [class*="bg-[#020817]"],
+.light [class*="bg-[#050b16]"],
+.light [class*="bg-[#061126]"],
+.light [class*="bg-[#07111f]"] {
+  background-color: hsl(var(--card)) !important;
+}
+
+.light [class*="text-sky-200"],
+.light [class*="text-sky-300"] {
+  color: hsl(201 96% 32%) !important;
+}
+
+.light [class*="text-blue-300"] {
+  color: hsl(221 83% 43%) !important;
+}
+
+.light [class*="text-emerald-100"],
+.light [class*="text-emerald-200"],
+.light [class*="text-emerald-300"] {
+  color: hsl(158 64% 28%) !important;
+}
+
+.light [class*="text-orange-200"],
+.light [class*="text-orange-300"] {
+  color: hsl(20 84% 36%) !important;
+}
+
+.light [class*="text-red-50"],
+.light [class*="text-red-100"],
+.light [class*="text-red-200"],
+.light [class*="text-red-300"] {
+  color: hsl(0 74% 36%) !important;
+}
+
+.light [class*="text-slate-400"],
+.light [class*="text-slate-500"] {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.light .react-flow__controls {
+  background: hsl(var(--card));
+}
+
+.light .react-flow__controls-button {
+  background: hsl(var(--card));
+}
+
+.light .react-flow__controls-button:hover {
+  background: hsl(var(--muted));
+}
+
 @media (min-width: 1024px) {
   [data-collapsed="true"] .sidebar-label {
     display: none;
@@ -100,5 +163,9 @@ body {
     width: 2.75rem;
     padding-left: 0;
     padding-right: 0;
+  }
+
+  [data-collapsed="true"] .sidebar-content {
+    overflow: visible;
   }
 }

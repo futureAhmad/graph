@@ -9,14 +9,16 @@ type ThemeContextValue = {
   toggleTheme: () => void;
 };
 
+export const DEFAULT_THEME: Theme = "dark";
+
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
 
   useEffect(() => {
     const storedTheme = window.localStorage.getItem("theme");
-    const initialTheme: Theme = storedTheme === "light" ? "light" : "dark";
+    const initialTheme: Theme = storedTheme === "light" ? "light" : DEFAULT_THEME;
     setTheme(initialTheme);
     applyTheme(initialTheme);
   }, []);

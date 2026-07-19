@@ -1,24 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import {
   BarChart3,
-  Bell,
   ChevronDown,
   GitBranch,
-  HelpCircle,
+  LogIn,
+  LogOut,
+  PlusCircle,
   UploadCloud,
   Moon,
   Network,
   Search,
-  Settings,
   Share2,
   ShieldCheck,
   Sun
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/layout/auth-provider";
 import { useTheme } from "@/components/layout/theme-provider";
 import {
   Sidebar,
@@ -42,9 +44,43 @@ const navItems = [
   { href: "/import", label: "Import Data", icon: UploadCloud }
 ];
 
+const adminNavItems = [
+  { href: "/admin/users", label: "Users", icon: ShieldCheck },
+  { href: "/admin/services", label: "Add Service", icon: PlusCircle }
+];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { theme, toggleTheme } = useTheme();
+  const { user, loading, logout } = useAuth();
+  const isLoginPage = pathname === "/login";
+  const visibleNavItems = user?.role === "admin" ? [...navItems, ...adminNavItems] : navItems;
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    if (!user && !isLoginPage) {
+      router.replace("/login");
+      return;
+    }
+    if (user && isLoginPage) {
+      router.replace(user.role === "admin" ? "/admin/users" : "/dashboard");
+    }
+  }, [isLoginPage, loading, router, user]);
+
+  if (isLoginPage) {
+    return <>{children}</>;
+  }
+
+  if (loading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
@@ -70,8 +106,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   const Icon = item.icon;
                   const active = pathname.startsWith(item.href);
                   return (
-                    <SidebarMenuButton key={item.href} active={active} asChild>
-                      <Link href={item.href} title={item.label} aria-label={item.label}>
+                    <SidebarMenuButton key={item.href} active={active} tooltip={item.label} asChild>
+                      <Link href={item.href} aria-label={item.label}>
                         <Icon className="h-4 w-4" />
                         <span className="sidebar-label">{item.label}</span>
                       </Link>
@@ -80,19 +116,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 })}
               </SidebarMenu>
             </SidebarGroup>
-            <SidebarGroup>
-              <SidebarGroupLabel>Admin</SidebarGroupLabel>
-              <SidebarMenu>
-                <span className="flex h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground" title="Settings">
-                  <Settings className="h-4 w-4" />
-                  <span className="sidebar-label">Settings</span>
-                </span>
-                <span className="flex h-10 items-center gap-3 rounded-md px-3 text-sm text-muted-foreground" title="Roles">
-                  <ShieldCheck className="h-4 w-4" />
-                  <span className="sidebar-label">Roles</span>
-                </span>
-              </SidebarMenu>
-            </SidebarGroup>
+            {user?.role === "admin" ? (
+              <SidebarGroup>
+                <SidebarGroupLabel>Admin</SidebarGroupLabel>
+                <SidebarMenu>
+                  {adminNavItems.map((item) => {
+                    const Icon = item.icon;
+                    const active = pathname.startsWith(item.href);
+                    return (
+                      <SidebarMenuButton key={item.href} active={active} tooltip={item.label} asChild>
+                        <Link href={item.href} aria-label={item.label}>
+                          <Icon className="h-4 w-4" />
+                          <span className="sidebar-label">{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroup>
+            ) : null}
           </SidebarContent>
           <SidebarFooter>
             <div className="sidebar-label rounded-md border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
@@ -111,10 +153,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
                 <span>Dependency Intelligence</span>
               </Link>
-              <div className="hidden min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground md:flex lg:max-w-3xl">
-                <Search className="h-4 w-4" />
-                <span className="truncate">Search for Service, Channel, System, Integration Tool...</span>
-              </div>
               <div className="ml-auto flex items-center gap-2">
                 <Button
                   className="hidden h-9 w-9 p-0 md:inline-flex"
@@ -125,20 +163,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                 </Button>
-                <span className="hidden h-9 w-9 items-center justify-center rounded-md text-muted-foreground md:flex">
-                  <Bell className="h-5 w-5" />
-                </span>
-                <span className="hidden h-9 w-9 items-center justify-center rounded-md text-muted-foreground sm:flex">
-                  <HelpCircle className="h-5 w-5" />
-                </span>
-                <span className="flex h-9 items-center gap-2 rounded-full bg-blue-500/20 pl-3 pr-2 text-sm font-semibold">
-                  AD
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </span>
+                {user ? (
+                  <>
+                    <span className="hidden h-9 items-center gap-2 rounded-md border border-border bg-muted/60 px-3 text-sm font-semibold md:flex">
+                      {user.displayName}
+                      <span className="rounded bg-background px-2 py-0.5 text-xs uppercase text-muted-foreground">{user.role}</span>
+                    </span>
+                    <Button variant="outline" size="sm" onClick={logout}>
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </Button>
+                  </>
+                ) : (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href="/login">
+                      <LogIn className="h-4 w-4" />
+                      Login
+                    </Link>
+                  </Button>
+                )}
               </div>
             </div>
             <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:hidden">
-              {navItems.map((item) => {
+              {visibleNavItems.map((item) => {
                 const Icon = item.icon;
                 const active = pathname.startsWith(item.href);
                 return (

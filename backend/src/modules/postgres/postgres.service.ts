@@ -2,16 +2,17 @@ import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 
+const DEFAULT_DATABASE_URL = "postgresql://service_dependency:password@127.0.0.1:55432/service_dependency";
+
 @Injectable()
 export class PostgresService implements OnModuleDestroy {
   private readonly pool: Pool;
 
   constructor(configService: ConfigService) {
+    const configuredDatabaseUrl = configService.get<string>("DATABASE_URL");
+
     this.pool = new Pool({
-      connectionString: configService.get<string>(
-        "DATABASE_URL",
-        "f"
-      )
+      connectionString: isPlaceholderDatabaseUrl(configuredDatabaseUrl) ? DEFAULT_DATABASE_URL : configuredDatabaseUrl
     });
   }
 
@@ -37,4 +38,8 @@ export class PostgresService implements OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     await this.pool.end();
   }
+}
+
+function isPlaceholderDatabaseUrl(value: string | undefined): value is undefined {
+  return !value || ["base", "f"].includes(value.trim().toLowerCase());
 }

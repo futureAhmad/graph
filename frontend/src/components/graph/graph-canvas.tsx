@@ -6,14 +6,13 @@ import {
   Controls,
   Handle,
   MarkerType,
-  MiniMap,
   Position,
   ReactFlow,
   type Edge,
   type Node,
   type NodeProps
 } from "@xyflow/react";
-import type { GraphEdge, GraphNode, GraphResponse } from "@service-dependency/shared";
+import type { GraphEdge, GraphNode, GraphResponse } from "@/shared";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { colorForType } from "./node-colors";
@@ -37,6 +36,8 @@ type DependencyNodeData = {
   targetHandleCount: number;
 };
 
+const EMPTY_GRAPH: GraphResponse = { nodes: [], edges: [] };
+
 export function GraphCanvas({
   graph,
   height = 560,
@@ -44,16 +45,17 @@ export function GraphCanvas({
   onSelectedNodeChange,
   onSelectedEdgeChange
 }: GraphCanvasProps) {
-  const source = graph && graph.nodes.length > 0 ? graph : demoGraph;
+  const source = graph ?? EMPTY_GRAPH;
+  const hasGraph = source.nodes.length > 0;
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [selectedId, setSelectedId] = useState<string | null>(source.rootNodeId ?? source.nodes[0]?.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(hasGraph ? source.rootNodeId ?? source.nodes[0]?.id ?? null : null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   useEffect(() => {
     setCollapsed(new Set());
-    setSelectedId(source.rootNodeId ?? source.nodes[0]?.id ?? null);
+    setSelectedId(hasGraph ? source.rootNodeId ?? source.nodes[0]?.id ?? null : null);
     setSelectedEdgeId(null);
-  }, [source.rootNodeId, source.nodes]);
+  }, [hasGraph, source.rootNodeId, source.nodes]);
 
   const { nodes, edges } = useMemo(
     () => toFlowGraph(source, collapsed, selectedId, selectedEdgeId),
@@ -77,48 +79,57 @@ export function GraphCanvas({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-white/10 bg-[#020817] shadow-[0_24px_80px_rgba(0,0,0,0.38)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3">
+    <div className="overflow-hidden rounded-md border border-border bg-card shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-3">
         <div>
           <h2 className="text-lg font-semibold">{title}</h2>
           <p className="text-xs text-muted-foreground">Service is the root. Double-click nodes to collapse or expand branches.</p>
         </div>
       </div>
-      <div className="bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,8,23,1))]">
+      <div className="bg-background dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.92),rgba(2,8,23,1))]">
         <div style={{ height }} className="min-w-0">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={nodeTypes}
-            fitView
-            fitViewOptions={{ padding: 0.22 }}
-            minZoom={0.12}
-            maxZoom={1.7}
-            nodesDraggable
-            nodesConnectable={false}
-            elementsSelectable
-            panOnDrag
-            panOnScroll
-            zoomOnScroll
-            zoomOnPinch
-            onNodeClick={(_, node) => {
-              setSelectedId(node.id);
-              setSelectedEdgeId(null);
-              onSelectedEdgeChange?.(null);
-              onSelectedNodeChange?.(source.nodes.find((item) => item.id === node.id) ?? null);
-            }}
-            onEdgeClick={(_, edge) => {
-              setSelectedId(null);
-              setSelectedEdgeId(edge.id);
-              onSelectedNodeChange?.(null);
-              onSelectedEdgeChange?.(source.edges.find((item) => item.id === edge.id) ?? null);
-            }}
-            onNodeDoubleClick={(_, node) => toggleNode(node.id)}
-          >
-            <Background color="rgba(148, 163, 184, 0.18)" gap={36} />
-            <Controls showInteractive={false} />
-            <MiniMap nodeColor={(node) => String(node.data.color)} pannable zoomable />
-          </ReactFlow>
+          {hasGraph ? (
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              nodeTypes={nodeTypes}
+              fitView
+              fitViewOptions={{ padding: 0.22 }}
+              minZoom={0.12}
+              maxZoom={1.7}
+              nodesDraggable
+              nodesConnectable={false}
+              elementsSelectable
+              panOnDrag
+              panOnScroll
+              zoomOnScroll
+              zoomOnPinch
+              proOptions={{ hideAttribution: true }}
+              onNodeClick={(_, node) => {
+                setSelectedId(node.id);
+                setSelectedEdgeId(null);
+                onSelectedEdgeChange?.(null);
+                onSelectedNodeChange?.(source.nodes.find((item) => item.id === node.id) ?? null);
+              }}
+              onEdgeClick={(_, edge) => {
+                setSelectedId(null);
+                setSelectedEdgeId(edge.id);
+                onSelectedNodeChange?.(null);
+                onSelectedEdgeChange?.(source.edges.find((item) => item.id === edge.id) ?? null);
+              }}
+              onNodeDoubleClick={(_, node) => toggleNode(node.id)}
+            >
+              <Background color="rgba(148, 163, 184, 0.18)" gap={36} />
+              <Controls showInteractive={false} />
+            </ReactFlow>
+          ) : (
+            <div className="flex h-full items-center justify-center px-6 text-center">
+              <div>
+                <div className="text-base font-semibold">No graph loaded</div>
+                <p className="mt-2 max-w-md text-sm text-muted-foreground">Search or select an item to load its relationship graph.</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -131,7 +142,7 @@ function DependencyNode({ data }: NodeProps<Node<DependencyNodeData>>) {
   return (
     <div
       className={cn(
-        "w-56 rounded-md border bg-[#07111f]/95 px-3 py-3 shadow-[0_18px_44px_rgba(0,0,0,0.34)] transition-transform",
+        "w-56 rounded-md border bg-card px-3 py-3 text-card-foreground shadow-[0_18px_44px_rgba(0,0,0,0.16)] transition-transform dark:bg-[#07111f]/95 dark:shadow-[0_18px_44px_rgba(0,0,0,0.34)]",
         data.selected && "scale-[1.03] shadow-[0_0_0_1px_rgba(255,255,255,0.16),0_24px_52px_rgba(0,0,0,0.42)]"
       )}
       style={{ borderColor: String(data.color) }}
@@ -148,7 +159,7 @@ function DependencyNode({ data }: NodeProps<Node<DependencyNodeData>>) {
       ))}
       <div className="flex items-center gap-2">
         <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/10 text-xs font-bold"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-xs font-bold"
           style={{ backgroundColor: `${String(data.color)}24`, color: String(data.color) }}
         >
           {nodeInitial(data.type)}
@@ -159,9 +170,9 @@ function DependencyNode({ data }: NodeProps<Node<DependencyNodeData>>) {
         </div>
       </div>
       <div className="mt-3 flex items-center justify-between gap-2">
-        <Badge className="border-white/10 bg-white/[0.04] text-[11px]">{data.childCount} child</Badge>
+        <Badge className="border-border bg-muted/60 text-[11px]">{data.childCount} child</Badge>
         {data.childCount > 0 ? (
-          <span className="rounded-full border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[11px] text-muted-foreground">
+          <span className="rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground">
             {data.collapsed ? "Collapsed" : "Expanded"}
           </span>
         ) : null}
@@ -383,7 +394,6 @@ function createDependencyPositions(
   const directChannels = (childrenById.get(rootId) ?? []).filter(
     (nodeId) => visible(nodeId) && nodeById.get(nodeId)?.type === "DirectChannel"
   );
-
   if (directChannels.length === 0) {
     return new Map();
   }
@@ -410,18 +420,6 @@ function createDependencyPositions(
         averageConnectedAppIndex(left, apps, childrenById) - averageConnectedAppIndex(right, apps, childrenById) ||
         nodeName(graph, left).localeCompare(nodeName(graph, right))
     );
-    const thirdParties = unique(
-      apps.flatMap((appId) =>
-        (childrenById.get(appId) ?? []).filter(
-          (nodeId) => visible(nodeId) && nodeById.get(nodeId)?.type === "ThirdParty"
-        )
-      )
-    ).sort(
-      (left, right) =>
-        averageConnectedAppIndex(left, apps, childrenById) - averageConnectedAppIndex(right, apps, childrenById) ||
-        nodeName(graph, left).localeCompare(nodeName(graph, right))
-    );
-    const appChildren = [...integrations, ...thirdParties];
     const hardwareSpecs = unique(
       integrations.flatMap((integrationId) =>
         (childrenById.get(integrationId) ?? []).filter(
@@ -429,13 +427,13 @@ function createDependencyPositions(
         )
       )
     ).sort((left, right) => nodeName(graph, left).localeCompare(nodeName(graph, right)));
-    const width = Math.max(apps.length, appChildren.length, hardwareSpecs.length, 1) * xGap;
+    const width = Math.max(apps.length, integrations.length, hardwareSpecs.length, 1) * xGap;
     const startX = cursorX;
     const centerX = startX + (width - xGap) / 2;
 
     positions.set(dcId, { x: centerX, y: yGap });
     apps.forEach((appId, index) => positions.set(appId, { x: startX + index * xGap, y: yGap * 2 }));
-    appChildren.forEach((nodeId, index) => positions.set(nodeId, { x: startX + index * xGap, y: yGap * 3 }));
+    integrations.forEach((nodeId, index) => positions.set(nodeId, { x: startX + index * xGap, y: yGap * 3 }));
     hardwareSpecs.forEach((hardwareSpecId, index) =>
       positions.set(hardwareSpecId, { x: startX + index * xGap, y: yGap * 4 })
     );
@@ -513,41 +511,4 @@ function nodeInitial(type: string): string {
     return "TP";
   }
   return type.slice(0, 1).toUpperCase();
-}
-
-const demoGraph: GraphResponse = {
-  rootNodeId: "service",
-  nodes: [
-    demoNode("service", "Service", "Stock"),
-    demoNode("branch", "DirectChannel", "Branch"),
-    demoNode("crm", "Application", "CRM"),
-    demoNode("ibm", "Integration", "IBM")
-  ],
-  edges: [
-    demoEdge("service", "branch", "AVAILABLE_ON"),
-    demoEdge("branch", "crm", "DEPENDS_ON"),
-    demoEdge("crm", "ibm", "DEPENDS_ON")
-  ]
-};
-
-function demoNode(id: string, type: string, name: string): GraphNode {
-  return {
-    id,
-    entityKey: id,
-    name,
-    normalizedName: name.toLowerCase(),
-    label: name,
-    type,
-    datasetId: "default"
-  };
-}
-
-function demoEdge(source: string, target: string, type: string) {
-  return {
-    id: `${source}-${target}`,
-    source,
-    target,
-    label: type.replaceAll("_", " "),
-    type
-  };
 }

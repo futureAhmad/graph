@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { CANONICAL_NODE_TYPES, ImportSummary, RELATIONSHIP_TYPES } from "@service-dependency/shared";
+import { CANONICAL_NODE_TYPES, ImportSummary, RELATIONSHIP_TYPES } from "../../shared";
 import { randomUUID } from "node:crypto";
 import * as XLSX from "xlsx";
 import {
@@ -60,6 +60,10 @@ export class ImportService {
     };
   }
 
+  async deleteImportedData(): Promise<{ deleted: true }> {
+    return this.graphRepository.deleteImportedData();
+  }
+
   createImportPlan(
     rows: WorkbookRow[],
     options: { datasetId: string; sourceName: string; sheetName: string }
@@ -71,6 +75,9 @@ export class ImportService {
       (header) => this.columnRegistry.resolve(header).nodeType === CANONICAL_NODE_TYPES.FUNCTION
     );
     const serviceHeader = normalizedHeaders.find((header) => this.columnRegistry.resolve(header).isServiceColumn);
+    const serviceCriticalHeader = normalizedHeaders.find((header) =>
+      ["critical service", "critical_service"].includes(normalizeHeader(header))
+    );
 
     if (!serviceHeader) {
       throw new BadRequestException("Required column missing: service name.");
@@ -78,14 +85,19 @@ export class ImportService {
 
     const dependencyColumns = normalizedHeaders
       .map((header) => this.columnRegistry.resolve(header))
-      .filter((column) => !column.isServiceColumn && column.nodeType !== CANONICAL_NODE_TYPES.FUNCTION)
+      .filter(
+        (column) =>
+          !column.isServiceColumn &&
+          column.nodeType !== CANONICAL_NODE_TYPES.FUNCTION &&
+          !isMetadataColumn(column.normalizedHeader)
+      )
       .sort((left, right) => dependencyOrder(left.nodeType) - dependencyOrder(right.nodeType));
     const nodes = new Map<string, ImportNodeInput>();
     const relationships = new Map<string, ImportRelationshipInput>();
     const facts = new Map<string, ImportFactInput>();
     let rowsImported = 0;
 
-    rows.forEach((row, rowIndex) => {
+    rows.forEach((row) => {
       const serviceValue = this.valueForHeader(row, serviceHeader);
       if (!hasValue(serviceValue)) {
         warnings.push(`Row skipped because service name is blank.`);
@@ -133,10 +145,9 @@ export class ImportService {
         integrationNode.normalizedName
       ].join(":");
       facts.set(factKey, {
-        datasetId: options.datasetId,
-        sourceRowNumber: rowIndex + 2,
         functionName: functionHeader ? String(this.valueForHeader(row, functionHeader) ?? "").trim() || undefined : undefined,
         serviceName: serviceNode.name,
+        serviceIsCritical: serviceCriticalHeader ? isCriticalValue(String(this.valueForHeader(row, serviceCriticalHeader) ?? "")) : false,
         directChannelName: directChannelNode.name,
         applicationName: applicationNode.name,
         integrationName: integrationNode.name
@@ -215,49 +226,82 @@ export class ImportService {
     }
   ): ImportHardwareSpecInput[] {
     const facts = new Map<string, ImportHardwareSpecInput>();
-    const integrationHeader = this.findHeader(rows, ["integ", "integration", "integration tool"]);
-    const specHeader = this.findHeader(rows, ["spec", "hardware spec", "specification"]);
-    const criticalHeader = this.findHeader(rows, ["is_critical", "critical", "criticality"]);
+    const sourceHeader = this.findHeader(rows, ["source"]);
+    const hardwareColumns = [
+      { category: "server", valueHeaders: ["server"], criticalHeaders: ["server_is_critical", "server critical"] },
+      { category: "os", valueHeaders: ["os"], criticalHeaders: ["os_is_critical", "os critical"] },
+      {
+        category: "virtualization",
+        valueHeaders: ["virtualization", "virtualisation"],
+        criticalHeaders: ["virtualization_is_critical", "virtualisation_is_critical", "virtualization critical"]
+      },
+      {
+        category: "load_balancer",
+        valueHeaders: ["load_balancer", "load balancer"],
+        criticalHeaders: ["load_balancer_is_critical", "load balancer critical"]
+      },
+      { category: "firewall", valueHeaders: ["firewall"], criticalHeaders: ["firewall_is_critical", "firewall critical"] },
+      { category: "backup", valueHeaders: ["backup"], criticalHeaders: ["backup_is_critical", "backup critical"] },
+      { category: "storage", valueHeaders: ["storage"], criticalHeaders: ["storage_is_critical", "storage critical"] },
+      { category: "db", valueHeaders: ["db", "database"], criticalHeaders: ["db_is_critical", "database_is_critical", "db critical"] },
+      { category: "dns", valueHeaders: ["dns_required", "dns required"], criticalHeaders: ["dns_required", "dns required"] }
+    ]
+      .map((column) => ({
+        ...column,
+        valueHeader: this.findHeader(rows, column.valueHeaders),
+        criticalHeader: this.findHeader(rows, column.criticalHeaders)
+      }))
+      .filter((column) => column.valueHeader);
 
-    if (!integrationHeader || !specHeader) {
+    if (!sourceHeader || hardwareColumns.length === 0) {
       return [];
     }
 
-    rows.forEach((row, rowIndex) => {
-      const integrationName = this.valueForHeader(row, integrationHeader);
-      const specName = this.valueForHeader(row, specHeader);
-      if (!hasValue(integrationName) || !hasValue(specName)) {
+    rows.forEach((row) => {
+      const sourceName = this.valueForHeader(row, sourceHeader);
+      if (!hasValue(sourceName)) {
         return;
       }
 
-      const integrationNode = this.toNode(
-        options.datasetId,
-        CANONICAL_NODE_TYPES.INTEGRATION,
-        integrationName,
-        integrationHeader
-      );
-      const specNode = this.toNode(options.datasetId, CANONICAL_NODE_TYPES.HARDWARE_SPEC, specName, specHeader);
-      const criticalityLabel = criticalHeader ? String(this.valueForHeader(row, criticalHeader) ?? "").trim() : "";
+      const sourceNode = this.resolveHardwareSourceNode(options.datasetId, options.nodes, sourceName, sourceHeader);
+      if (!sourceNode) {
+        return;
+      }
 
-      options.nodes.set(integrationNode.entityKey, integrationNode);
-      options.nodes.set(specNode.entityKey, specNode);
-      this.addRelationship(
-        options.relationships,
-        options.datasetId,
-        integrationNode,
-        specNode,
-        RELATIONSHIP_TYPES.HAS_HARDWARE,
-        specHeader
-      );
+      options.nodes.set(sourceNode.entityKey, sourceNode);
 
-      facts.set([options.datasetId, integrationNode.normalizedName, specNode.normalizedName].join(":"), {
-        datasetId: options.datasetId,
-        sourceRowNumber: rowIndex + 2,
-        integrationName: integrationNode.name,
-        specName: specNode.name,
-        specCategory: classifyHardwareSpec(specNode.name),
-        isCritical: isCriticalValue(criticalityLabel),
-        criticalityLabel: criticalityLabel || undefined
+      hardwareColumns.forEach((column) => {
+        if (!column.valueHeader) {
+          return;
+        }
+        const specName = this.valueForHeader(row, column.valueHeader);
+        if (!hasValue(specName) || isNegativeHardwareValue(specName)) {
+          return;
+        }
+
+        const specNode = this.toNode(options.datasetId, CANONICAL_NODE_TYPES.HARDWARE_SPEC, specName, column.valueHeader);
+        const criticalityLabel = column.criticalHeader ? String(this.valueForHeader(row, column.criticalHeader) ?? "").trim() : "";
+
+        options.nodes.set(specNode.entityKey, specNode);
+        this.addRelationship(
+          options.relationships,
+          options.datasetId,
+          sourceNode,
+          specNode,
+          RELATIONSHIP_TYPES.HAS_HARDWARE,
+          column.valueHeader
+        );
+
+        facts.set([options.datasetId, sourceNode.type, sourceNode.normalizedName, specNode.normalizedName].join(":"), {
+          sourceName: sourceNode.name,
+          sourceType:
+            sourceNode.type === CANONICAL_NODE_TYPES.APPLICATION
+              ? CANONICAL_NODE_TYPES.APPLICATION
+              : CANONICAL_NODE_TYPES.INTEGRATION,
+          specName: specNode.name,
+          specCategory: column.category,
+          isCritical: isCriticalValue(criticalityLabel)
+        });
       });
     });
 
@@ -276,7 +320,10 @@ export class ImportService {
     const serviceHeader = this.findHeader(rows, ["service name", "service"]);
     const directChannelHeader = this.findHeader(rows, ["dc", "direct channel"]);
     const applicationHeader = this.findHeader(rows, ["app", "application"]);
-    const thirdPartyHeader = this.findHeader(rows, ["third party", "thrid party", "vendor", "provider"]);
+    const thirdPartyHeader =
+      this.findHeader(rows, ["company name"]) ??
+      this.findHeader(rows, ["thrid", "third", "third party", "thrid party", "vendor", "provider"]);
+    const thirdPartyCompositeHeader = this.findHeader(rows, ["thrid", "third", "third party", "thrid party"]);
 
     if (!serviceHeader || !directChannelHeader || !applicationHeader || !thirdPartyHeader) {
       return [];
@@ -284,11 +331,11 @@ export class ImportService {
 
     const facts = new Map<string, ImportThirdPartyInput>();
 
-    rows.forEach((row, rowIndex) => {
+    rows.forEach((row) => {
       const serviceValue = this.valueForHeader(row, serviceHeader);
       const directChannelValue = this.valueForHeader(row, directChannelHeader);
       const applicationValue = this.valueForHeader(row, applicationHeader);
-      const thirdPartyValue = this.valueForHeader(row, thirdPartyHeader);
+      const thirdPartyValue = this.resolveThirdPartyCompanyName(row, thirdPartyHeader, thirdPartyCompositeHeader);
       if (!hasValue(serviceValue) || !hasValue(directChannelValue) || !hasValue(applicationValue) || !hasValue(thirdPartyValue)) {
         return;
       }
@@ -323,8 +370,6 @@ export class ImportService {
           thirdPartyNode.normalizedName
         ].join(":"),
         {
-          datasetId: options.datasetId,
-          sourceRowNumber: rowIndex + 2,
           functionName: functionHeader ? String(this.valueForHeader(row, functionHeader) ?? "").trim() || undefined : undefined,
           serviceName: serviceNode.name,
           directChannelName: directChannelNode.name,
@@ -335,6 +380,40 @@ export class ImportService {
     });
 
     return Array.from(facts.values());
+  }
+
+  private resolveHardwareSourceNode(
+    datasetId: string,
+    nodes: Map<string, ImportNodeInput>,
+    sourceName: unknown,
+    sourceHeader: string
+  ): ImportNodeInput | undefined {
+    const normalizedSourceName = normalizeName(String(sourceName));
+    const existingNode = Array.from(nodes.values()).find(
+      (node) =>
+        node.normalizedName === normalizedSourceName &&
+        (node.type === CANONICAL_NODE_TYPES.APPLICATION || node.type === CANONICAL_NODE_TYPES.INTEGRATION)
+    );
+    if (existingNode) {
+      return existingNode;
+    }
+
+    return this.toNode(datasetId, CANONICAL_NODE_TYPES.INTEGRATION, sourceName, sourceHeader);
+  }
+
+  private resolveThirdPartyCompanyName(
+    row: WorkbookRow,
+    companyHeader: string | undefined,
+    compositeHeader: string | undefined
+  ): string | undefined {
+    const companyName = companyHeader ? String(this.valueForHeader(row, companyHeader) ?? "").trim() : "";
+    if (companyName) {
+      return companyName;
+    }
+
+    const compositeValue = compositeHeader ? String(this.valueForHeader(row, compositeHeader) ?? "").trim() : "";
+    const match = compositeValue.match(/\(([^()]*)\)\s*$/);
+    return (match?.[1] ?? compositeValue).trim() || undefined;
   }
 
   private getHeaders(rows: WorkbookRow[]): string[] {
@@ -419,6 +498,14 @@ function classifyHardwareSpec(specName: string): string {
 
 function isCriticalValue(value: string): boolean {
   return ["critical", "yes", "y", "true", "1"].includes(normalizeName(value));
+}
+
+function isNegativeHardwareValue(value: unknown): boolean {
+  return ["no", "n", "false", "0", "none", "na", "n/a", "not required"].includes(normalizeName(String(value)));
+}
+
+function isMetadataColumn(normalizedHeader: string): boolean {
+  return normalizedHeader === "no" || normalizedHeader.startsWith("critical ") || normalizedHeader.startsWith("critical_");
 }
 
 function dependencyOrder(type: string): number {

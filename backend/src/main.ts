@@ -8,9 +8,18 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
+  const frontendOrigin = config.get<string>("FRONTEND_ORIGIN", "http://localhost:3000");
+  const allowedOrigins = new Set([frontendOrigin, "http://localhost:3000", "http://127.0.0.1:3000"]);
 
   app.enableCors({
-    origin: config.get<string>("FRONTEND_ORIGIN", "http://localhost:3000")
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+    },
+    credentials: true
   });
 
   app.useGlobalPipes(

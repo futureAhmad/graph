@@ -1,0 +1,18 @@
+sheet 1 contains
+no	function name	service name	delivery channel critical_service	application integration critical_application critical_integration
+since the no only change and be unique if the combination is service name and service name changes. and the function name contain multiple of services name you know.
+
+sheet 2
+source	server	server_is_critical	os	os_is_critical	virtualization	virtualization_is_critical	load_balancer	load_balancer_is_critical	firewall	firewall_is_critical	backup	backup_is_critical	storage	storage_is_critical	db	db_is_critical	DNS_REQUIRED
+source can be either application or integration in sheet 1, so it will be the Primary Key
+
+sheet 3
+no	function name	service name	dc	app	thrid	type	Company name
+since the no	function name	service name	dc	app should be same in sheet 1 (these will be the pk to sheet 1), from these sheet we only want to get the Company name.
+knowing that thrid contain the type and company name inside parantheses, so just seperated to type col and Company name. in db save as key don't deplicate the data in sheet 1 and sheet 3
+
+no need for source_row_number and dataset_id in any table , remove it from all.
+also remove criticality_lable from fact_integration_hardware_spec, no need since we have is_critical. also remove it in frontend.
+from frontend, delete any edge and node info from all page don't show it. delet Entity Key. in explore page list all third party above in level of service.
+add badge if the service is critial or not in level of the service (there is a cloumn in db represend this info). in graph remove the Viewport indicator.
+in the selected node div make the title only first letter capitilize

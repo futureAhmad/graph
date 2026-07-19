@@ -1,14 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { ImpactResponse, SearchResultItem } from "@service-dependency/shared";
-import { AlertTriangle, GitBranch } from "lucide-react";
+import type { ImpactResponse, SearchResultItem } from "@/shared";
+import { AlertTriangle, Check, Copy, GitBranch } from "lucide-react";
 import { GraphCanvas } from "@/components/graph/graph-canvas";
 import { Button } from "@/components/ui/button";
+import { CommandSelect } from "@/components/ui/command";
 import { Panel } from "@/components/ui/panel";
-import { apiClient } from "@/lib/api";
+import { getImpact, getImpactOptions, type ImpactMode } from "@/features/impact/impact.api";
 
-type ImpactMode = "app" | "integ";
+const impactModeOptions = [
+  { label: "Application", value: "app" },
+  { label: "Integration", value: "integ" }
+];
 
 export function ImpactSearch() {
   const [mode, setMode] = useState<ImpactMode>("app");
@@ -23,7 +27,7 @@ export function ImpactSearch() {
     setError(null);
     setImpact(null);
     try {
-      const result = await apiClient<ImpactResponse>(`/impact/${mode}/${encodeURIComponent(name)}`);
+      const result = await getImpact(mode, name);
       setImpact(result);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Impact analysis failed.");
@@ -35,11 +39,11 @@ export function ImpactSearch() {
   useEffect(() => {
     async function loadOptions() {
       setError(null);
-      setImpact(null);
+        setImpact(null);
       try {
-        const result = await apiClient<SearchResultItem[]>(`/impact/${mode}`);
+        const result = await getImpactOptions(mode);
         setOptions(result);
-        setName(result[0]?.name || "");
+        setName("");
       } catch (caught) {
         setOptions([]);
         setName("");
@@ -50,12 +54,8 @@ export function ImpactSearch() {
     void loadOptions();
   }, [mode]);
 
-  useEffect(() => {
-    if (name) {
-      void analyze();
-    }
-  }, [analyze, name]);
-
+  const childMetric = impact ? affectedChildMetric(impact, mode) : null;
+  
   return (
     <div className="space-y-5">
       <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-end">
@@ -63,26 +63,23 @@ export function ImpactSearch() {
           <h1 className="text-2xl font-semibold md:text-3xl">Impact Analysis</h1>
           <p className="mt-1 text-sm text-muted-foreground">Find affected services, channels, and dependency paths.</p>
         </div>
-        <div className="grid gap-2 md:grid-cols-[160px_minmax(0,280px)_auto]">
-          <select
-            className="h-10 rounded-md border border-white/10 bg-white/[0.04] px-3 text-sm"
+        <div className="grid gap-2 md:grid-cols-[180px_minmax(0,360px)_auto]">
+          <CommandSelect
+            options={impactModeOptions}
             value={mode}
-            onChange={(event) => setMode(event.target.value as ImpactMode)}
-          >
-            <option value="app">Application</option>
-            <option value="integ">Integration</option>
-          </select>
-          <select
-            className="h-10 rounded-md border border-white/10 bg-white/[0.04] px-3 text-sm"
+            onValueChange={(value) => setMode(value as ImpactMode)}
+            placeholder="Select type"
+            searchPlaceholder="Search types..."
+          />
+          <CommandSelect
+            options={options.map((option) => ({ label: option.name, value: option.name }))}
             value={name}
-            onChange={(event) => setName(event.target.value)}
-          >
-            {options.map((option) => (
-              <option key={option.entityKey} value={option.name}>
-                {option.name}
-              </option>
-            ))}
-          </select>
+            onValueChange={setName}
+            placeholder={mode === "app" ? "Select application" : "Select integration"}
+            searchPlaceholder={mode === "app" ? "Search applications..." : "Search integrations..."}
+            emptyText={mode === "app" ? "No applications found." : "No integrations found."}
+            showFullText
+          />
           <Button onClick={analyze} disabled={loading || !name.trim()}>
             <GitBranch className="h-4 w-4" />
             {loading ? "Analyzing" : "Analyze"}
@@ -111,18 +108,21 @@ export function ImpactSearch() {
                   {impact.impactLevel}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <Metric label="Services" value={impact.affectedServices.length} />
-                <Metric label="Channels" value={impact.affectedDirectChannels.length} />
+                <Metric label="Channels" value={impact.affectedDirectChannels.length} /> 
+                {childMetric ? <Metric label={childMetric.label} value={childMetric.value} /> : null}
               </div>
             </Panel>
             <Panel className="max-h-[420px] w-full overflow-auto">
               <h2 className="mb-4 font-semibold">Affected Channels</h2>
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {impact.affectedDirectChannels.map((channel) => (
-                  <div key={channel.id} className="min-w-0 rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm">
-                    <div className="font-semibold">{channel.name}</div>
-                    <div className="mt-1 break-all text-xs text-muted-foreground">{channel.entityKey}</div>
+                  <div
+                    key={channel.id}
+                    className="min-w-0 rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm"
+                  >
+                    <div className="font-semibold truncate">{channel.name}</div>
                   </div>
                 ))}
               </div>
@@ -156,9 +156,32 @@ function impactGraphForCanvas(impact: ImpactResponse) {
   };
 }
 
+function affectedChildMetric(impact: ImpactResponse, mode: ImpactMode) {
+  const sourceId = impact.graph.rootNodeId;
+  if (!sourceId) {
+    return {
+      label: mode === "app" ? "Integrations" : "Apps",
+      value: 0
+    };
+  }
+
+  const childType = mode === "app" ? "Integration" : "Application";
+  const childIds = new Set(
+    impact.graph.edges
+      .filter((edge) => edge.source === sourceId)
+      .map((edge) => edge.target)
+      .filter((nodeId) => impact.graph.nodes.find((node) => node.id === nodeId)?.type === childType)
+  );
+
+  return {
+    label: mode === "app" ? "Integrations" : "Apps",
+    value: childIds.size
+  };
+}
+
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
+    <div className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.04] p-3">
       <div className="text-xs uppercase text-muted-foreground">{label}</div>
       <div className="mt-1 text-xl font-semibold">{value}</div>
     </div>
@@ -175,7 +198,7 @@ function impactLevelTone(level: string) {
   if (level === "Medium") {
     return {
       icon: "bg-amber-500/15 text-amber-300",
-      badge: "border-amber-400/30 bg-amber-400/10 text-amber-200"
+      badge: "border-amber-400/50 bg-amber-400/10 text-amber-400"
     };
   }
   if (level === "High") {
@@ -191,8 +214,28 @@ function impactLevelTone(level: string) {
 }
 
 function JsonObjectView({ value }: { value: { serviceNames: string[]; count: number } }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(JSON.stringify(value, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
-    <div className="w-full overflow-auto rounded-md border border-white/10 bg-[#050b16] p-3 font-mono text-xs leading-6 shadow-inner">
+    <div className="relative w-full overflow-auto rounded-md border border-white/10 bg-[#050b16] p-3 font-mono text-xs leading-6 shadow-inner">
+      <button
+        onClick={handleCopy}
+        className="absolute right-3 top-3 rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+        title="Copy JSON"
+      >
+        {copied ? (
+          <Check className="h-4 w-4 text-emerald-400" />
+        ) : (
+          <Copy className="h-4 w-4" />
+        )}
+      </button>
+
       <div>
         <span className="text-slate-500">{"{"}</span>
       </div>
@@ -201,21 +244,27 @@ function JsonObjectView({ value }: { value: { serviceNames: string[]; count: num
         <span className="text-slate-400">: </span>
         <span className="text-slate-500">[</span>
       </div>
+
       {value.serviceNames.map((serviceName, index) => (
         <div key={serviceName} className="pl-8">
           <span className="text-emerald-300">"{serviceName}"</span>
-          {index < value.serviceNames.length - 1 ? <span className="text-slate-400">,</span> : null}
+          {index < value.serviceNames.length - 1 && (
+            <span className="text-slate-400">,</span>
+          )}
         </div>
       ))}
+
       <div className="pl-4">
         <span className="text-slate-500">]</span>
         <span className="text-slate-400">,</span>
       </div>
+
       <div className="pl-4">
         <span className="text-sky-300">"count"</span>
         <span className="text-slate-400">: </span>
         <span className="text-orange-300">{value.count}</span>
       </div>
+
       <div>
         <span className="text-slate-500">{"}"}</span>
       </div>

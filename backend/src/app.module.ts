@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AdminModule } from "./modules/admin/admin.module";
+import { AuthModule } from "./modules/auth/auth.module";
 import { GraphModule } from "./modules/graph/graph.module";
 import { ImpactModule } from "./modules/impact/impact.module";
 import { ImportModule } from "./modules/import/import.module";
@@ -11,6 +13,8 @@ import { ServiceModule } from "./modules/service/service.module";
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PostgresModule,
+    AuthModule,
+    AdminModule,
     GraphModule,
     ImportModule,
     ImpactModule,

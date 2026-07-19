@@ -1,4 +1,4 @@
-import { DEFAULT_DATASET_ID } from "@service-dependency/shared";
+import { DEFAULT_DATASET_ID } from "../../../shared";
 import { Type } from "class-transformer";
 import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
