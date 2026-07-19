@@ -409,30 +409,34 @@ function createDependencyPositions(
     const apps = (childrenById.get(dcId) ?? []).filter(
       (nodeId) => visible(nodeId) && nodeById.get(nodeId)?.type === "Application"
     );
-    const integrations = unique(
+    const integrationIds = unique(
       apps.flatMap((appId) =>
         (childrenById.get(appId) ?? []).filter(
           (nodeId) => visible(nodeId) && nodeById.get(nodeId)?.type === "Integration"
         )
       )
-    ).sort(
-      (left, right) =>
-        averageConnectedAppIndex(left, apps, childrenById) - averageConnectedAppIndex(right, apps, childrenById) ||
-        nodeName(graph, left).localeCompare(nodeName(graph, right))
     );
+    const ordered = orderApplicationIntegrationLayers(graph, apps, integrationIds, childrenById);
+    const integrations = ordered.integrations;
+    const orderedApps = ordered.apps;
     const hardwareSpecs = unique(
       integrations.flatMap((integrationId) =>
         (childrenById.get(integrationId) ?? []).filter(
           (nodeId) => visible(nodeId) && nodeById.get(nodeId)?.type === "HardwareSpec"
         )
       )
-    ).sort((left, right) => nodeName(graph, left).localeCompare(nodeName(graph, right)));
-    const width = Math.max(apps.length, integrations.length, hardwareSpecs.length, 1) * xGap;
+    ).sort(
+      (left, right) =>
+        averageConnectedLayerIndex(left, integrations, (integrationId) => childrenById.get(integrationId) ?? []) -
+          averageConnectedLayerIndex(right, integrations, (integrationId) => childrenById.get(integrationId) ?? []) ||
+        nodeName(graph, left).localeCompare(nodeName(graph, right))
+    );
+    const width = Math.max(orderedApps.length, integrations.length, hardwareSpecs.length, 1) * xGap;
     const startX = cursorX;
     const centerX = startX + (width - xGap) / 2;
 
     positions.set(dcId, { x: centerX, y: yGap });
-    apps.forEach((appId, index) => positions.set(appId, { x: startX + index * xGap, y: yGap * 2 }));
+    orderedApps.forEach((appId, index) => positions.set(appId, { x: startX + index * xGap, y: yGap * 2 }));
     integrations.forEach((nodeId, index) => positions.set(nodeId, { x: startX + index * xGap, y: yGap * 3 }));
     hardwareSpecs.forEach((hardwareSpecId, index) =>
       positions.set(hardwareSpecId, { x: startX + index * xGap, y: yGap * 4 })
@@ -450,9 +454,97 @@ function createDependencyPositions(
   return positions;
 }
 
-function averageConnectedAppIndex(integrationId: string, apps: string[], childrenById: Map<string, string[]>): number {
-  const indexes = apps
-    .map((appId, index) => ((childrenById.get(appId) ?? []).includes(integrationId) ? index : null))
+function orderApplicationIntegrationLayers(
+  graph: GraphResponse,
+  apps: string[],
+  integrations: string[],
+  childrenById: Map<string, string[]>
+): { apps: string[]; integrations: string[] } {
+  let orderedApps = [...apps].sort((left, right) => nodeName(graph, left).localeCompare(nodeName(graph, right)));
+  let orderedIntegrations = [...integrations].sort((left, right) => nodeName(graph, left).localeCompare(nodeName(graph, right)));
+
+  for (let iteration = 0; iteration < 4; iteration += 1) {
+    orderedIntegrations = orderByConnectedLayer(
+      graph,
+      orderedIntegrations,
+      orderedApps,
+      (appId) => childrenById.get(appId) ?? []
+    );
+    orderedApps = orderByOwnConnections(
+      graph,
+      orderedApps,
+      orderedIntegrations,
+      (appId) => childrenById.get(appId) ?? []
+    );
+  }
+
+  return { apps: orderedApps, integrations: orderedIntegrations };
+}
+
+function orderByConnectedLayer(
+  graph: GraphResponse,
+  nodes: string[],
+  referenceLayer: string[],
+  connectionIds: (nodeId: string) => string[]
+): string[] {
+  const originalIndex = new Map(nodes.map((nodeId, index) => [nodeId, index]));
+
+  return [...nodes].sort((left, right) => {
+    const leftScore = averageConnectedLayerIndex(left, referenceLayer, connectionIds);
+    const rightScore = averageConnectedLayerIndex(right, referenceLayer, connectionIds);
+
+    return (
+      leftScore - rightScore ||
+      (originalIndex.get(left) ?? 0) - (originalIndex.get(right) ?? 0) ||
+      nodeName(graph, left).localeCompare(nodeName(graph, right))
+    );
+  });
+}
+
+function orderByOwnConnections(
+  graph: GraphResponse,
+  nodes: string[],
+  referenceLayer: string[],
+  connectionIds: (nodeId: string) => string[]
+): string[] {
+  const originalIndex = new Map(nodes.map((nodeId, index) => [nodeId, index]));
+
+  return [...nodes].sort((left, right) => {
+    const leftScore = averageOwnConnectionIndex(left, referenceLayer, connectionIds);
+    const rightScore = averageOwnConnectionIndex(right, referenceLayer, connectionIds);
+
+    return (
+      leftScore - rightScore ||
+      (originalIndex.get(left) ?? 0) - (originalIndex.get(right) ?? 0) ||
+      nodeName(graph, left).localeCompare(nodeName(graph, right))
+    );
+  });
+}
+
+function averageConnectedLayerIndex(
+  nodeId: string,
+  referenceLayer: string[],
+  connectionIds: (nodeId: string) => string[]
+): number {
+  const indexes = referenceLayer
+    .map((referenceId, index) => (connectionIds(referenceId).includes(nodeId) ? index : null))
+    .filter((index): index is number => index !== null);
+
+  if (indexes.length === 0) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  return indexes.reduce((total, index) => total + index, 0) / indexes.length;
+}
+
+function averageOwnConnectionIndex(
+  nodeId: string,
+  referenceLayer: string[],
+  connectionIds: (nodeId: string) => string[]
+): number {
+  const connectedIds = new Set(connectionIds(nodeId));
+  const indexes = referenceLayer
+    .map((referenceId, index) => (connectedIds.has(referenceId) ? index : null))
     .filter((index): index is number => index !== null);
 
   if (indexes.length === 0) {

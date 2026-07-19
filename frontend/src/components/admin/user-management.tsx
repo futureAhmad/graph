@@ -162,13 +162,13 @@ export function UserManagement() {
       <Panel className="space-y-4 border-amber-500/20 bg-amber-500/5">
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div className="flex items-center gap-3">
-            <Clock3 className="h-5 w-5 text-amber-300" />
+            <Clock3 className="h-5 w-5 text-amber-400" />
             <div>
               <h2 className="text-lg font-semibold">Pending access requests</h2>
               <p className="text-sm text-muted-foreground">Review accounts requested from the login page.</p>
             </div>
           </div>
-          <span className="w-fit rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-sm font-medium text-amber-200">
+          <span className="w-fit rounded-md border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-sm font-medium text-amber-500">
             {pendingUsers.length} pending
           </span>
         </div>
